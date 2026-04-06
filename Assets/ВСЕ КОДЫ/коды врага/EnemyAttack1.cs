@@ -5,10 +5,13 @@ public class EnemyAttack : MonoBehaviour
     [Header("Settings")]
     public int damage = 10;
     public float attackCooldown = 1.5f;
-    public float attackRange = 2f; // Расстояние для удара
+    public float attackRange = 2f;
+    [SerializeField] private float hitRangeTolerance = 0.5f;
+    [SerializeField] private bool applyDamageImmediately = true;
 
     private float lastAttackTime;
     private Transform playerTransform;
+    private PlayerHealth playerHealth;
     private EnemyAI enemyAI;
     private EnemyAnimatorController animController;
 
@@ -16,9 +19,13 @@ public class EnemyAttack : MonoBehaviour
     {
         enemyAI = GetComponent<EnemyAI>();
         animController = GetComponent<EnemyAnimatorController>();
-        // Ищем игрока по тегу один раз при старте
+
         GameObject player = GameObject.FindGameObjectWithTag("Player");
-        if (player != null) playerTransform = player.transform;
+        if (player != null)
+        {
+            playerTransform = player.transform;
+            playerHealth = player.GetComponentInChildren<PlayerHealth>();
+        }
     }
 
     private void Update()
@@ -27,7 +34,6 @@ public class EnemyAttack : MonoBehaviour
 
         float distance = Vector3.Distance(transform.position, playerTransform.position);
 
-        // Если игрок рядом и кулдаун прошел
         if (distance <= attackRange && Time.time - lastAttackTime >= attackCooldown)
         {
             StartAttack();
@@ -40,23 +46,27 @@ public class EnemyAttack : MonoBehaviour
 
         if (enemyAI != null) enemyAI.StopForAttack();
         if (animController != null) animController.PlayAttack();
+
+        // РЈСЂРѕРЅ РЅР°РЅРѕСЃРёС‚СЃСЏ СЃСЂР°Р·Сѓ, РґР°Р¶Рµ РµСЃР»Рё РІ Р°С‚Р°РєСѓСЋС‰РµРј РєР»РёРїРµ РЅРµС‚ Animation Event.
+        if (applyDamageImmediately)
+            HitPlayer();
     }
 
-    // ВАЖНО: Этот метод привяжи к Animation Event в окне Animation
-    // На том кадре анимации, где происходит сам удар
+    // РњРѕР¶РЅРѕ РѕСЃС‚Р°РІРёС‚СЊ РїСЂРёРІСЏР·РєСѓ Рє Animation Event вЂ” РјРµС‚РѕРґ РѕСЃС‚Р°РµС‚СЃСЏ СЃРѕРІРјРµСЃС‚РёРјС‹Рј.
     public void HitPlayer()
     {
         if (playerTransform == null) return;
 
-        // Проверяем расстояние еще раз в момент удара (вдруг игрок убежал)
-        if (Vector3.Distance(transform.position, playerTransform.position) <= attackRange + 0.5f)
+        if (Vector3.Distance(transform.position, playerTransform.position) <= attackRange + hitRangeTolerance)
         {
-            PlayerHealth health = playerTransform.GetComponent<PlayerHealth>();
-            if (health != null) health.TakeDamage(damage);
+            if (playerHealth == null)
+                playerHealth = playerTransform.GetComponentInChildren<PlayerHealth>();
+
+            if (playerHealth != null)
+                playerHealth.TakeDamage(damage);
         }
     }
 
-    // Этот метод вызывается в самом конце анимации атаки
     public void ResumeMoveAfterAttack()
     {
         if (enemyAI != null) enemyAI.ResumeAfterAttack();

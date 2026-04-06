@@ -10,9 +10,11 @@ public class EnemyAnimatorController : MonoBehaviour
 
     private readonly int SpeedHash = Animator.StringToHash("Speed");
     private readonly int AttackHash = Animator.StringToHash("Attack");
+    private readonly int AttackHashWithSpace = Animator.StringToHash("Attack ");
     private readonly int DeathHash = Animator.StringToHash("Death");
 
     [SerializeField] private float speedDampTime = 0.1f; // Плавность перехода анимации
+    [SerializeField] private string fallbackAttackStateName = "Attack ";
 
     private void Awake()
     {
@@ -29,7 +31,15 @@ public class EnemyAnimatorController : MonoBehaviour
 
     public void PlayAttack()
     {
+        // Защита от рассинхрона параметров в Animator (Attack / "Attack ").
+        anim.ResetTrigger(AttackHash);
+        anim.ResetTrigger(AttackHashWithSpace);
         anim.SetTrigger(AttackHash);
+        anim.SetTrigger(AttackHashWithSpace);
+
+        // На случай отсутствия переходов по trigger принудительно включаем стейт атаки.
+        if (!string.IsNullOrWhiteSpace(fallbackAttackStateName))
+            anim.CrossFadeInFixedTime(fallbackAttackStateName, 0.1f);
     }
 
     public void PlayDeath()

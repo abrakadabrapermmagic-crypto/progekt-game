@@ -17,6 +17,10 @@ public class EnemyAAI : MonoBehaviour
     private readonly int IsRunningHash = Animator.StringToHash("isRunning");
     private readonly int DeathHash = Animator.StringToHash("Death");
 
+    // Совместимость со старым EnemyAI (используется EnemyAttack).
+    public void StopForAttack() => StopMovement();
+    public void ResumeAfterAttack() => ResumeMovement();
+
     void Start()
     {
         _agent = GetComponent<NavMeshAgent>();

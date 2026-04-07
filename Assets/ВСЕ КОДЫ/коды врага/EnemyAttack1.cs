@@ -12,13 +12,22 @@ public class EnemyAttack : MonoBehaviour
     private float lastAttackTime;
     private Transform playerTransform;
     private PlayerHealth playerHealth;
+
+    // Поддерживаем и новый EnemyAAI, и старый EnemyAI.
+    private EnemyAAI enemyAAI;
     private EnemyAI enemyAI;
     private EnemyAnimatorController animController;
+    private Animator animator;
+
+    private readonly int attackHash = Animator.StringToHash("Attack");
+    private readonly int attackHashWithSpace = Animator.StringToHash("Attack ");
 
     private void Awake()
     {
+        enemyAAI = GetComponent<EnemyAAI>();
         enemyAI = GetComponent<EnemyAI>();
         animController = GetComponent<EnemyAnimatorController>();
+        animator = GetComponent<Animator>();
 
         GameObject player = GameObject.FindGameObjectWithTag("Player");
         if (player != null)
@@ -44,8 +53,21 @@ public class EnemyAttack : MonoBehaviour
     {
         lastAttackTime = Time.time;
 
-        if (enemyAI != null) enemyAI.StopForAttack();
-        if (animController != null) animController.PlayAttack();
+        if (enemyAAI != null) enemyAAI.StopForAttack();
+        else if (enemyAI != null) enemyAI.StopForAttack();
+
+        if (animController != null)
+        {
+            animController.PlayAttack();
+        }
+        else if (animator != null)
+        {
+            // Fallback на случай, если EnemyAnimatorController не добавлен на объект.
+            animator.ResetTrigger(attackHash);
+            animator.ResetTrigger(attackHashWithSpace);
+            animator.SetTrigger(attackHash);
+            animator.SetTrigger(attackHashWithSpace);
+        }
 
         // Урон наносится сразу, даже если в атакующем клипе нет Animation Event.
         if (applyDamageImmediately)
@@ -69,6 +91,7 @@ public class EnemyAttack : MonoBehaviour
 
     public void ResumeMoveAfterAttack()
     {
-        if (enemyAI != null) enemyAI.ResumeAfterAttack();
+        if (enemyAAI != null) enemyAAI.ResumeAfterAttack();
+        else if (enemyAI != null) enemyAI.ResumeAfterAttack();
     }
 }

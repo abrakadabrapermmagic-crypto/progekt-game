@@ -1,30 +1,39 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
 public class FirstPersonMovement : MonoBehaviour
 {
-    public float speed = 5;
+    public float speed = 5f;
 
     [Header("Running")]
     public bool canRun = true;
     public bool IsRunning { get; private set; }
-    public float runSpeed = 9;
+    public float runSpeed = 9f;
     public KeyCode runningKey = KeyCode.LeftShift;
 
-    private CharacterController controller;
-    private Vector3 velocity;
+    private Rigidbody rb;
+    private Vector3 moveInput;
 
     public List<System.Func<float>> speedOverrides = new List<System.Func<float>>();
 
     void Awake()
     {
-        controller = GetComponent<CharacterController>();
+        rb = GetComponent<Rigidbody>();
     }
 
     void Update()
     {
         IsRunning = canRun && Input.GetKey(runningKey);
 
+        float x = Input.GetAxis("Horizontal");
+        float z = Input.GetAxis("Vertical");
+
+        moveInput = (transform.right * x + transform.forward * z).normalized;
+    }
+
+    void FixedUpdate()
+    {
         float targetSpeed = IsRunning ? runSpeed : speed;
 
         if (speedOverrides.Count > 0)
@@ -32,20 +41,9 @@ public class FirstPersonMovement : MonoBehaviour
             targetSpeed = speedOverrides[speedOverrides.Count - 1]();
         }
 
-        float x = Input.GetAxis("Horizontal");
-        float z = Input.GetAxis("Vertical");
+        Vector3 currentVelocity = rb.velocity;
+        Vector3 targetVelocity = moveInput * targetSpeed;
 
-        Vector3 move = transform.right * x + transform.forward * z;
-
-        // Гравитация
-        if (controller.isGrounded && velocity.y < 0)
-        {
-            velocity.y = -2f;
-        }
-
-        velocity.y += Physics.gravity.y * Time.deltaTime;
-
-        controller.Move(move * targetSpeed * Time.deltaTime);
-        controller.Move(velocity * Time.deltaTime);
+        rb.velocity = new Vector3(targetVelocity.x, currentVelocity.y, targetVelocity.z);
     }
 }

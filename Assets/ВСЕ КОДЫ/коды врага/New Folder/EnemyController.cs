@@ -5,7 +5,13 @@ using UnityEngine.AI;
 [RequireComponent(typeof(Animator))]
 public class EnemyController : MonoBehaviour
 {
-    [Header("Target")]
+    // Перечисление для отслеживания состояния бота
+    public enum EnemyState { Idle, Chasing, Attacking, Dead }
+
+    [Header("Current Status")]
+    public EnemyState CurrentState = EnemyState.Idle;
+
+    [Header("Target Settings")]
     [SerializeField] private Transform target;
     [SerializeField] private string playerTag = "Player";
 
@@ -15,17 +21,12 @@ public class EnemyController : MonoBehaviour
     [SerializeField] private float pathUpdateInterval = 0.2f;
     [SerializeField] private float faceTargetSpeed = 10f;
 
-    [Header("Attack")]
+    [Header("Combat Settings")]
     [SerializeField] private float damage = 20f;
     [SerializeField] private float attackCooldown = 1.2f;
-    [SerializeField] private float attackDuration = 0.9f;   // запасной сброс атаки
     [SerializeField] private EnemyWeaponTrigger weaponTrigger;
 
-    [Header("Animator State Names")]
-    [SerializeField] private string attackStateName = "Attack";
-    [SerializeField] private string fallbackAttackStateName = "Attack ";
-
-    [Header("Death")]
+    [Header("Death Settings")]
     [SerializeField] private bool destroyOnDeath = false;
     [SerializeField] private float destroyDelay = 3f;
 
@@ -37,50 +38,7 @@ public class EnemyController : MonoBehaviour
     private bool isAttacking;
     private float nextPathUpdateTime;
     private float nextAttackTime;
-    private float attackFinishTime;
 
-
-    [SerializeField] private float attackWindup = 0.25f;   // через сколько после старта атаки включить меч
-    [SerializeField] private float attackActiveTime = 0.25f; // сколько меч активен
-
-    private readonly int SpeedHash = Animator.StringToHash("Speed");
-    private readonly int IsRunningHash = Animator.StringToHash("isRunning");
-    private readonly int AttackHash = Animator.StringToHash("Attack");
-    private readonly int AttackHashWithSpace = Animator.StringToHash("Attack ");
-    private readonly int DeathHash = Animator.StringToHash("Death");
-    private bool HasParameter(string paramName, AnimatorControllerParameterType type)
-    {
-        foreach (var param in anim.parameters)
-        {
-            if (param.name == paramName && param.type == type)
-                return true;
-        }
-
-        return false;
-    }
-    private System.Collections.IEnumerator AttackRoutine()
-    {
-        StopMovement();
-
-        // Ждём момент удара
-        yield return new WaitForSeconds(attackWindup);
-
-        if (!isDead && weaponTrigger != null)
-            weaponTrigger.BeginAttack(damage);
-
-        // Окно нанесения урона
-        yield return new WaitForSeconds(attackActiveTime);
-
-        if (weaponTrigger != null)
-            weaponTrigger.EndAttack();
-
-        isAttacking = false;
-    }
-    private bool HasState(string stateName, int layer = 0)
-    {
-        if (anim == null || layer < 0) return false;
-        return anim.HasState(layer, Animator.StringToHash(stateName));
-    }
     private void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
@@ -97,34 +55,22 @@ public class EnemyController : MonoBehaviour
 
     private void Update()
     {
-        if (isDead)
-            return;
+        if (isDead) return;
 
-        if (target == null)
-            FindTarget();
+        if (target == null) FindTarget();
 
-        if (target == null)
+        // Если цели нет или она мертва — отдыхаем
+        if (target == null || (playerHealth != null && playerHealth.IsDead))
         {
             StopMovement();
+            CurrentState = EnemyState.Idle;
             UpdateAnimator();
             return;
-        }
-
-        if (playerHealth != null && playerHealth.IsDead)
-        {
-            StopMovement();
-            UpdateAnimator();
-            return;
-        }
-
-        // Фолбэк: если event конца атаки не пришёл, сами сбрасываем атаку по таймеру
-        if (isAttacking && Time.time >= attackFinishTime)
-        {
-            ForceFinishAttack();
         }
 
         float distance = Vector3.Distance(transform.position, target.position);
 
+        // Логика переключения состояний
         if (distance <= attackDistance)
         {
             StopMovement();
@@ -137,9 +83,10 @@ public class EnemyController : MonoBehaviour
         }
         else if (!isAttacking && distance <= chaseDistance)
         {
+            CurrentState = EnemyState.Chasing;
             ResumeMovement();
 
-            if (Time.time >= nextPathUpdateTime && agent.enabled && agent.isOnNavMesh && !agent.isStopped)
+            if (Time.time >= nextPathUpdateTime && agent.enabled && agent.isOnNavMesh)
             {
                 agent.SetDestination(target.position);
                 nextPathUpdateTime = Time.time + pathUpdateInterval;
@@ -148,6 +95,7 @@ public class EnemyController : MonoBehaviour
         else if (!isAttacking)
         {
             StopMovement();
+            CurrentState = EnemyState.Idle;
         }
 
         UpdateAnimator();
@@ -165,62 +113,45 @@ public class EnemyController : MonoBehaviour
     private void StartAttack()
     {
         isAttacking = true;
+        CurrentState = EnemyState.Attacking;
         nextAttackTime = Time.time + attackCooldown;
-        attackFinishTime = Time.time + attackDuration;
 
         StopMovement();
-        weaponTrigger?.EndAttack();
 
-        bool startedAttack = false;
-
+        // Запускаем анимацию. 
+        // Логика нанесения урона теперь полностью внутри Animation Events.
         if (HasParameter("Attack", AnimatorControllerParameterType.Trigger))
         {
             anim.ResetTrigger("Attack");
             anim.SetTrigger("Attack");
-            startedAttack = true;
         }
-        else if (HasState("Attack"))
-        {
-            anim.CrossFadeInFixedTime("Attack", 0.05f, 0);
-            startedAttack = true;
-        }
-
-        if (!startedAttack)
-            Debug.LogWarning($"{name}: Атака логически запущена, но в Animator нет trigger/state Attack.");
-
-        StartCoroutine(AttackRoutine());
     }
 
-    private void ForceFinishAttack()
-    {
-        if (weaponTrigger != null)
-            weaponTrigger.EndAttack();
+    // --- МЕТОДЫ ДЛЯ ANIMATION EVENTS ---
 
-        isAttacking = false;
-    }
-
-    // Animation Event
+    // 1. Вызывается в момент начала активной фазы удара (замах завершен)
     public void Animation_BeginAttackWindow()
     {
         if (isDead || weaponTrigger == null) return;
         weaponTrigger.BeginAttack(damage);
     }
 
-    // Animation Event
+    // 2. Вызывается, когда удар прошел и меч нужно "выключить"
     public void Animation_EndAttackWindow()
     {
-        if (weaponTrigger == null) return;
-        weaponTrigger.EndAttack();
-    }
-
-    // Animation Event
-    public void Animation_AttackFinished()
-    {
-        isAttacking = false;
-
         if (weaponTrigger != null)
             weaponTrigger.EndAttack();
     }
+
+    // 3. Вызывается в самом конце анимации, чтобы бот снова мог ходить
+    public void Animation_AttackFinished()
+    {
+        isAttacking = false;
+        if (weaponTrigger != null)
+            weaponTrigger.EndAttack();
+    }
+
+    // -----------------------------------
 
     public void Die()
     {
@@ -228,23 +159,13 @@ public class EnemyController : MonoBehaviour
 
         isDead = true;
         isAttacking = false;
+        CurrentState = EnemyState.Dead;
         weaponTrigger?.EndAttack();
 
-        if (agent != null && agent.enabled)
-        {
-            agent.isStopped = true;
-
-            if (agent.isOnNavMesh)
-                agent.ResetPath();
-
-            agent.velocity = Vector3.zero;
-            agent.enabled = false;
-        }
+        if (agent != null) agent.enabled = false;
 
         if (HasParameter("Death", AnimatorControllerParameterType.Trigger))
             anim.SetTrigger("Death");
-        else if (HasState("Death"))
-            anim.CrossFadeInFixedTime("Death", 0.05f, 0);
 
         if (destroyOnDeath)
             Destroy(gameObject, destroyDelay);
@@ -252,55 +173,54 @@ public class EnemyController : MonoBehaviour
 
     private void StopMovement()
     {
-        if (agent == null || !agent.enabled) return;
-
-        agent.isStopped = true;
-        agent.velocity = Vector3.zero;
+        if (agent != null && agent.enabled && agent.isOnNavMesh)
+        {
+            agent.isStopped = true;
+            agent.velocity = Vector3.zero;
+        }
     }
 
     private void ResumeMovement()
     {
-        if (agent == null || !agent.enabled) return;
-
-        agent.isStopped = false;
+        if (agent != null && agent.enabled && agent.isOnNavMesh)
+            agent.isStopped = false;
     }
 
     private void FaceTarget()
     {
         if (target == null) return;
+        Vector3 lookDirection = (target.position - transform.position).normalized;
+        lookDirection.y = 0;
 
-        Vector3 lookDirection = target.position - transform.position;
-        lookDirection.y = 0f;
-
-        if (lookDirection.sqrMagnitude < 0.001f)
-            return;
-
-        Quaternion targetRotation = Quaternion.LookRotation(lookDirection);
-        transform.rotation = Quaternion.Slerp(
-            transform.rotation,
-            targetRotation,
-            faceTargetSpeed * Time.deltaTime
-        );
+        if (lookDirection.sqrMagnitude > 0.001f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(lookDirection);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, faceTargetSpeed * Time.deltaTime);
+        }
     }
 
     private void UpdateAnimator()
     {
         if (anim == null) return;
-
-        float normalizedSpeed = 0f;
-
-        if (agent != null && agent.enabled && agent.speed > 0f)
-            normalizedSpeed = agent.velocity.magnitude / agent.speed;
+        float speed = (agent != null && agent.enabled) ? agent.velocity.magnitude / agent.speed : 0;
 
         if (HasParameter("Speed", AnimatorControllerParameterType.Float))
-            anim.SetFloat("Speed", normalizedSpeed, 0.1f, Time.deltaTime);
+            anim.SetFloat("Speed", speed, 0.1f, Time.deltaTime);
+    }
+
+    private bool HasParameter(string paramName, AnimatorControllerParameterType type)
+    {
+        foreach (var param in anim.parameters)
+        {
+            if (param.name == paramName && param.type == type) return true;
+        }
+        return false;
     }
 
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, chaseDistance);
-
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, attackDistance);
     }

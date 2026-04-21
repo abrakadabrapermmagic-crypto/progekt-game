@@ -20,7 +20,7 @@ public class PlayerHealth : MonoBehaviour
     private Quaternion startRotation;
     private float nextDamageTime;
 
-    public float CurrentHealth { get; private set; }
+    public float CurrentHealth;
     public bool IsDead { get; private set; }
 
     private void Awake()
@@ -33,7 +33,7 @@ public class PlayerHealth : MonoBehaviour
         CurrentHealth = maxHealth;
         RefreshUI();
     }
-
+    
     public bool TakeDamage(float amount)
     {
         if (IsDead)

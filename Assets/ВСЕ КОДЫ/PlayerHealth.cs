@@ -5,52 +5,46 @@ public class PlayerHealth : MonoBehaviour
 {
     [Header("Health")]
     [SerializeField] private float maxHealth = 100f;
+    [SerializeField] private float hitInvulnerabilityTime = 0.15f;
+    [SerializeField] private Slider healthSlider;
+
+    [Header("Respawn")]
+    [SerializeField] private bool respawnOnDeath = false;
     [SerializeField] private float respawnDelay = 2f;
     [SerializeField] private Transform[] spawnPoints;
 
-    [Header("Damage Protection")]
-    [SerializeField] private float hitInvulnerabilityTime = 0.15f;
-
-    [Header("Optional Components")]
-    [SerializeField] private CapsuleCollider capsuleCollider;
+    [Header("Optional")]
     [SerializeField] private Rigidbody rb;
-
-    [Header("UI")]
-    [SerializeField] private Slider healthSlider;
 
     private Vector3 startPosition;
     private Quaternion startRotation;
     private float nextDamageTime;
 
     public float CurrentHealth { get; private set; }
-    public float MaxHealth => maxHealth;
     public bool IsDead { get; private set; }
 
     private void Awake()
     {
-        if (capsuleCollider == null)
-            capsuleCollider = GetComponent<CapsuleCollider>();
-
         if (rb == null)
             rb = GetComponent<Rigidbody>();
 
         startPosition = transform.position;
         startRotation = transform.rotation;
-
         CurrentHealth = maxHealth;
-        UpdateHealthUI();
+        RefreshUI();
     }
 
-    public bool TakeDamage(float damage)
+    public bool TakeDamage(float amount)
     {
-        if (IsDead) return false;
-        if (Time.time < nextDamageTime) return false;
+        if (IsDead)
+            return false;
+
+        if (Time.time < nextDamageTime)
+            return false;
 
         nextDamageTime = Time.time + hitInvulnerabilityTime;
-
-        CurrentHealth -= damage;
-        CurrentHealth = Mathf.Clamp(CurrentHealth, 0f, maxHealth);
-        UpdateHealthUI();
+        CurrentHealth = Mathf.Clamp(CurrentHealth - amount, 0f, maxHealth);
+        RefreshUI();
 
         if (CurrentHealth <= 0f)
             Die();
@@ -60,19 +54,19 @@ public class PlayerHealth : MonoBehaviour
 
     public void Heal(float amount)
     {
-        if (IsDead) return;
+        if (IsDead)
+            return;
 
-        CurrentHealth += amount;
-        CurrentHealth = Mathf.Clamp(CurrentHealth, 0f, maxHealth);
-        UpdateHealthUI();
+        CurrentHealth = Mathf.Clamp(CurrentHealth + amount, 0f, maxHealth);
+        RefreshUI();
     }
 
     private void Die()
     {
-        if (IsDead) return;
+        if (IsDead)
+            return;
 
         IsDead = true;
-        Debug.Log($"{gameObject.name} умер.");
 
         if (rb != null)
         {
@@ -80,32 +74,36 @@ public class PlayerHealth : MonoBehaviour
             rb.angularVelocity = Vector3.zero;
         }
 
-        Invoke(nameof(Respawn), respawnDelay);
+        if (respawnOnDeath)
+            Invoke(nameof(Respawn), respawnDelay);
     }
 
     private void Respawn()
     {
-        Vector3 respawnPosition = startPosition;
-        Quaternion respawnRotation = startRotation;
+        Vector3 newPosition = startPosition;
+        Quaternion newRotation = startRotation;
 
         if (spawnPoints != null && spawnPoints.Length > 0)
         {
-            Transform spawnPoint = spawnPoints[Random.Range(0, spawnPoints.Length)];
-            respawnPosition = spawnPoint.position;
-            respawnRotation = spawnPoint.rotation;
+            Transform spawn = spawnPoints[Random.Range(0, spawnPoints.Length)];
+            if (spawn != null)
+            {
+                newPosition = spawn.position;
+                newRotation = spawn.rotation;
+            }
         }
 
         if (rb != null)
         {
+            rb.position = newPosition;
+            rb.rotation = newRotation;
             rb.velocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
-            rb.position = respawnPosition;
-            rb.rotation = respawnRotation;
         }
         else
         {
-            transform.position = respawnPosition;
-            transform.rotation = respawnRotation;
+            transform.position = newPosition;
+            transform.rotation = newRotation;
         }
 
         Physics.SyncTransforms();
@@ -113,13 +111,13 @@ public class PlayerHealth : MonoBehaviour
         CurrentHealth = maxHealth;
         IsDead = false;
         nextDamageTime = 0f;
-
-        UpdateHealthUI();
+        RefreshUI();
     }
 
-    private void UpdateHealthUI()
+    private void RefreshUI()
     {
-        if (healthSlider == null) return;
+        if (healthSlider == null)
+            return;
 
         healthSlider.minValue = 0f;
         healthSlider.maxValue = maxHealth;

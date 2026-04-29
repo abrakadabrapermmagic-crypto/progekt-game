@@ -9,8 +9,11 @@ public class EnemyWeaponTrigger : MonoBehaviour
     [SerializeField] private LayerMask hitMask = ~0;
     [SerializeField] private bool useTriggerColliderToo = true;
 
-    private readonly HashSet<int> hitTargets = new HashSet<int>();
+    [Header("Ignore Settings")]
+    [SerializeField] private LayerMask ignoreMask;
+    [SerializeField] private string ignoreTag = "";
 
+    private readonly HashSet<int> hitTargets = new HashSet<int>();
     private bool attackActive;
     private float damage;
 
@@ -22,9 +25,7 @@ public class EnemyWeaponTrigger : MonoBehaviour
 
     private void Update()
     {
-        if (!attackActive)
-            return;
-
+        if (!attackActive) return;
         CheckHits();
     }
 
@@ -51,36 +52,52 @@ public class EnemyWeaponTrigger : MonoBehaviour
             TryHit(hits[i]);
     }
 
-    private void OnTriggerEnter(Collider other)
+    private void OnTriggerEnter(Collider other) => HandleTrigger(other);
+    private void OnTriggerStay(Collider other) => HandleTrigger(other);
+
+    private void HandleTrigger(Collider other)
     {
-        if (!useTriggerColliderToo)
-            return;
-
-        TryHit(other);
-    }
-
-    private void OnTriggerStay(Collider other)
-    {
-        if (!useTriggerColliderToo)
-            return;
-
-        TryHit(other);
+        if (useTriggerColliderToo) TryHit(other);
     }
 
     private void TryHit(Collider other)
     {
-        if (!attackActive || other == null)
-            return;
+        if (!attackActive || other == null) return;
 
-        PlayerHealth playerHealth = other.GetComponentInParent<PlayerHealth>();
-        if (playerHealth == null || playerHealth.IsDead)
-            return;
+        // 1. Проверка на игнорирование
+        if (ShouldIgnore(other.gameObject)) return;
 
-        int targetId = playerHealth.transform.root.gameObject.GetInstanceID();
-        if (!hitTargets.Add(targetId))
-            return;
+        // 2. Поиск здоровья (Игрок или Враг)
+        PlayerHealth pHealth = other.GetComponentInParent<PlayerHealth>();
+        EnemyHealth eHealth = other.GetComponentInParent<EnemyHealth>();
 
-        playerHealth.TakeDamage(damage);
+        // Проверяем, нашли ли мы хоть какой-то компонент здоровья
+        if (pHealth == null && eHealth == null) return;
+
+        // 3. Проверка на "смерть" цели
+        bool isDead = (pHealth != null && pHealth.IsDead) || (eHealth != null && eHealth.IsDead);
+        if (isDead) return;
+
+        // 4. Проверка на дубликаты попаданий (по корневому объекту)
+        int targetId = other.transform.root.gameObject.GetInstanceID();
+        if (!hitTargets.Add(targetId)) return;
+
+        // 5. Нанесение урона конкретному типу
+        if (pHealth != null)
+        {
+            pHealth.TakeDamage(damage);
+        }
+        else if (eHealth != null && other.CompareTag("Enemy"))
+        {
+            eHealth.TakeDamage(damage);
+        }
+    }
+
+    private bool ShouldIgnore(GameObject obj)
+    {
+        if (((1 << obj.layer) & ignoreMask) != 0) return true;
+        if (!string.IsNullOrEmpty(ignoreTag) && obj.CompareTag(ignoreTag)) return true;
+        return false;
     }
 
     private void OnDrawGizmosSelected()

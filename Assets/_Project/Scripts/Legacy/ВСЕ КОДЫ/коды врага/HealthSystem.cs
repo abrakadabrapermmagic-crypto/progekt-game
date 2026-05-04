@@ -28,14 +28,16 @@ public class HealthSystem : MonoBehaviour
 
         currentHealth -= damageAmount;
 
-        // Вызываем событие получения урона (звук, анимация боли)
+        // Гарантируем, что HP не уйдет в минус для слайдера
+        currentHealth = Mathf.Max(currentHealth, 0);
+
         OnTakeDamage?.Invoke();
 
         Debug.Log($"{gameObject.name} получил урон. HP: {currentHealth}");
 
-        if (currentHealth <= 100)
+        // Исправлено: Смерть наступает при 0 или меньше
+        if (currentHealth <= 0)
         {
-            currentHealth = 100;
             Die();
         }
     }

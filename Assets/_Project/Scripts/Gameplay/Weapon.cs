@@ -27,11 +27,8 @@ public class Weapon : MonoBehaviour
         Rigidbody rb = bullet.GetComponent<Rigidbody>();
         // Внутри метода Shoot() в скрипте Weapon:
         Bullet bulletScript = bullet.GetComponent<Bullet>();
-        if (bulletScript != null)
-        {
-            bulletScript.damage = 50; // Устанавливаем урон для конкретного выстрела
-        }
-
+      
+       
         // 3. Добавляем импульс вперед
         // ForceMode.Impulse идеально подходит для мгновенных толчков (выстрелов)
         rb.AddForce(firePoint.forward * bulletForce, ForceMode.Impulse);

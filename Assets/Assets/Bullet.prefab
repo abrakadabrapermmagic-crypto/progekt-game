@@ -209,7 +209,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e2f46a55a27bee543b7f4155f816d99d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  damage: 10
+  damage: 5
   lifeTime: 5
 --- !u!64 &2348062087562617752
 MeshCollider:
